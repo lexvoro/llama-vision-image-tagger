@@ -38,6 +38,7 @@ class ImageProcessor:
     async def process_image(self, image_path: Path, tag_count: int = 10, languages: List[str] = ["en"]) -> Dict:
         """Основной цикл обработки с ускоренным созданием превью."""
         try:
+            await asyncio.sleep(0.4)
             if not image_path.exists():
                 return {"is_processed": False, "error": "File not found"}
 
@@ -76,6 +77,9 @@ class ImageProcessor:
 
             if self.temp_path.exists():
                 os.remove(self.temp_path)
+                
+            import gc
+            gc.collect()
 
             return {
                 "description": self._clean_text(description_res.description),
@@ -151,7 +155,7 @@ class ImageProcessor:
     async def _query_ollama(self, prompt: str, image_path: str, format_schema: dict) -> str:
         max_retries = 10
         # Устанавливаем лимит ожидания в секундах
-        TIMEOUT_SECONDS = 40 
+        TIMEOUT_SECONDS = 120 
 
         for attempt in range(max_retries):
             try:
