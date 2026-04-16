@@ -6,32 +6,30 @@
     <title>Image Tagger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <!-- Add heroicons for nice UI icons -->
-    <script src="https://unpkg.com/@heroicons/vue@2.0.18/24/solid/index.min.js"></script>
 </head>
 <body class="bg-gray-50">
     <div id="app" class="min-h-screen">
-        <!-- Initial Select Folder View -->
+
+        <!-- ───────── FOLDER SELECT SCREEN ───────── -->
         <div v-if="!folderOpened" class="h-screen flex items-center justify-center">
             <div class="text-center">
                 <h1 class="text-3xl font-semibold text-gray-800 mb-6">Image Tagger</h1>
                 <div class="flex flex-col gap-4">
                     <div class="flex gap-2 items-center">
-                        <input 
-                            v-model="folderPath" 
-                            type="text" 
-                            placeholder="Enter folder path..." 
+                        <input
+                            v-model="folderPath"
+                            type="text"
+                            placeholder="Enter folder path..."
                             :disabled="isLoading"
                             class="px-4 py-2 border border-gray-300 rounded-md w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                         >
-                        <button @click="openFolder" 
+                        <button @click="openFolder"
                                 :disabled="isLoading"
                                 class="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center gap-2">
                             <span v-if="isLoading" class="inline-block animate-spin">↻</span>
                             {{ isLoading ? 'Opening...' : 'Open Folder' }}
                         </button>
                     </div>
-                    <!-- Add loading status message -->
                     <div v-if="loadingStatus" class="text-sm text-gray-600">
                         <div class="flex items-center justify-center gap-2">
                             <div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -42,48 +40,92 @@
             </div>
         </div>
 
-        <!-- Main Content View (after folder selection) -->
+        <!-- ───────── MAIN CONTENT SCREEN ───────── -->
         <div v-else class="container mx-auto px-4 py-6">
-            <!-- Header with Title and Search -->
-            <div class="mb-8">
-                <h1 class="text-2xl font-semibold text-gray-800 text-center mb-2">Image Tagger</h1>
-                <p v-if="folderPath" class="text-sm text-gray-600 text-center mb-6">
-                    Folder Opened: {{ folderPath }}
+            <div class="mb-6">
+
+                <!-- Title row + Close button -->
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex-1"></div>
+                    <h1 class="text-2xl font-semibold text-gray-800">Image Tagger</h1>
+                    <div class="flex-1 flex justify-end">
+                        <button @click="closeFolder"
+                                class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center gap-1">
+                            ✕ Close Folder
+                        </button>
+                    </div>
+                </div>
+
+                <p v-if="folderPath" class="text-sm text-gray-600 text-center mb-4">
+                    Folder: {{ folderPath }}
                 </p>
+
+                <!-- ── Settings Bar ── -->
+                <div class="max-w-4xl mx-auto mb-4 p-3 bg-white border border-gray-200 rounded-lg flex flex-wrap items-center gap-6 shadow-sm">
+                    <!-- Tag count -->
+                    <div class="flex items-center gap-2">
+                        <label class="text-sm font-medium text-gray-700 whitespace-nowrap">Tags per language:</label>
+                        <input
+                            type="number"
+                            v-model.number="tagCount"
+                            min="1" max="100"
+                            class="w-16 px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        >
+                    </div>
+
+                    <!-- Language selection -->
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm font-medium text-gray-700">Languages:</span>
+                        <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input type="checkbox" value="en" v-model="selectedLanguages"
+                                   class="w-4 h-4 accent-blue-600 rounded">
+                            <span class="text-sm text-gray-700">🇬🇧 English</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input type="checkbox" value="ru" v-model="selectedLanguages"
+                                   class="w-4 h-4 accent-red-600 rounded">
+                            <span class="text-sm text-gray-700">🇷🇺 Russian</span>
+                        </label>
+                    </div>
+
+                    <div v-if="selectedLanguages.length === 0"
+                         class="text-xs text-red-500 font-medium">
+                        ⚠ Select at least one language
+                    </div>
+                </div>
+
+                <!-- ── Action buttons ── -->
                 <div class="max-w-4xl mx-auto">
                     <div class="relative flex gap-2">
                         <div class="relative flex-1">
-                            <input type="text" 
+                            <input type="text"
                                    v-model="searchQuery"
-                                   placeholder="Search images..." 
+                                   placeholder="Search images..."
                                    class="w-full px-4 py-2 pl-10 pr-4 text-gray-700 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
                         </div>
-                        <button @click="searchImages" 
+                        <button @click="searchImages"
                                 class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
                             Search
                         </button>
-                        <button @click="refreshImages" 
+                        <button @click="refreshImages"
                                 class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center gap-1">
-                            <span>↻</span>
-                            Refresh
+                            <span>↻</span> Refresh
                         </button>
-                        <button @click="processAllImages" 
-                                :disabled="processingAll"
+                        <button @click="processAllImages"
+                                :disabled="processingAll || selectedLanguages.length === 0"
                                 class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center gap-1">
-                            <span>⚡</span>
-                            Process All
+                            <span>⚡</span> Process All
                         </button>
-						<button @click="saveAllMetadata" 
-        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex items-center gap-1">
-    <span>💾</span>
-    Save All
-</button>
+                        <button @click="saveAllMetadata"
+                                class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex items-center gap-1">
+                            <span>💾</span> Save All
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Add progress tracking UI -->
+            <!-- Progress bar -->
             <div v-if="processingAll" class="max-w-2xl mx-auto my-4">
                 <div class="flex justify-between text-sm text-gray-600">
                     <span>Processing: {{ currentImageName }}</span>
@@ -91,17 +133,16 @@
                 </div>
                 <div class="w-full bg-gray-200 rounded-full h-2.5">
                     <div class="bg-green-600 h-2.5 rounded-full transition-all duration-300"
-                         :style="{ width: `${progressPercentage}%` }">
-                    </div>
+                         :style="{ width: `${progressPercentage}%` }"></div>
                 </div>
-                <div v-if="failedImages.length" class="text-sm text-red-500">
+                <div v-if="failedImages.length" class="text-sm text-red-500 mt-1">
                     Failed to process {{ failedImages.length }} images
                 </div>
             </div>
 
             <!-- Image Grid -->
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                <div v-for="image in images" 
+                <div v-for="image in images"
                      :key="image.path"
                      @click="openImageModal(image)"
                      class="relative group cursor-pointer">
@@ -110,7 +151,7 @@
                              'ring-2 ring-green-500': image.is_processed,
                              'ring-2 ring-orange-500': !image.is_processed
                          }">
-                        <img :src="image.url" 
+                        <img :src="image.url"
                              :alt="image.description"
                              class="w-full h-full object-cover group-hover:opacity-75 transition-opacity">
                     </div>
@@ -118,60 +159,59 @@
             </div>
         </div>
 
-        <!-- Image Modal -->
-        <div v-if="selectedImage" 
+        <!-- ───────── IMAGE MODAL ───────── -->
+        <div v-if="selectedImage"
              class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4"
              @click="selectedImage = null">
-            <div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden" 
+            <div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden"
                  @click.stop>
                 <div class="p-4 flex justify-between items-center border-b">
                     <h3 class="text-lg font-medium">Image Details</h3>
-                    <button @click="selectedImage = null" 
-                            class="text-gray-400 hover:text-gray-500">
-                        ✕
-                    </button>
+                    <button @click="selectedImage = null" class="text-gray-400 hover:text-gray-500 text-xl">✕</button>
                 </div>
                 <div class="p-4 flex gap-4">
+                    <!-- Image preview -->
                     <div class="flex-1 flex items-center justify-center">
-                        <img :src="selectedImage.url" 
+                        <img :src="selectedImage.url"
                              :alt="selectedImage.description"
                              class="max-w-full max-h-[70vh] w-auto h-auto object-contain rounded-lg">
                     </div>
-                    <div class="w-80 space-y-4 overflow-y-auto max-h-[70vh]">
+
+                    <!-- Sidebar -->
+                    <div class="w-80 space-y-4 overflow-y-auto max-h-[70vh] pr-1">
                         <button v-if="!isProcessed"
                                 @click="processImage(selectedImage)"
-                                :disabled="selectedImage.processing"
+                                :disabled="selectedImage.processing || selectedLanguages.length === 0"
                                 class="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed">
                             {{ selectedImage.processing ? 'Processing...' : 'Process Image' }}
                         </button>
-                        
+
                         <div>
-                            <h4 class="font-medium mb-2">Image Path</h4>
-                            <p class="text-sm text-gray-600 break-all font-mono">
-                                {{ selectedImage.path }}
-                            </p>
+                            <h4 class="font-medium mb-2 text-sm text-gray-500">Image Path</h4>
+                            <p class="text-sm text-gray-600 break-all font-mono">{{ selectedImage.path }}</p>
                         </div>
-                        
+
                         <div>
                             <h4 class="font-medium mb-2">Description</h4>
                             <textarea
                                 v-model="selectedImage.description"
                                 class="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 rows="3"
-                                placeholder="Enter description..."
-                            ></textarea>
+                                placeholder="Enter description...">
+                            </textarea>
                         </div>
-                        
+
+                        <!-- English Tags -->
                         <div>
-                            <h4 class="font-medium mb-2">Tags</h4>
+                            <h4 class="font-medium mb-2">🇬🇧 Tags (English)</h4>
                             <div class="space-y-2">
-                                <div class="flex flex-wrap gap-2">
-                                    <span v-for="(tag, index) in selectedImage.tags" 
-                                          :key="index"
-                                          class="px-2 py-1 text-sm bg-gray-100 rounded-md text-gray-700 flex items-center gap-1">
+                                <div class="flex flex-wrap gap-2 min-h-[32px]">
+                                    <span v-for="(tag, index) in selectedImage.tags"
+                                          :key="'en-'+index"
+                                          class="px-2 py-1 text-sm bg-blue-50 border border-blue-200 rounded-md text-blue-800 flex items-center gap-1">
                                         {{ tag }}
-                                        <button @click="removeTag(index)" 
-                                                class="text-gray-500 hover:text-red-500">×</button>
+                                        <button @click="removeTag(index)"
+                                                class="text-blue-400 hover:text-red-500 leading-none">×</button>
                                     </span>
                                 </div>
                                 <div class="flex gap-2">
@@ -180,26 +220,49 @@
                                         @keyup.enter="addTag"
                                         type="text"
                                         class="flex-1 px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Add new tag..."
-                                    >
+                                        placeholder="Add English tag...">
                                     <button @click="addTag"
-                                            class="px-3 py-1 text-sm bg-gray-200 rounded-md hover:bg-gray-300">
-                                        Add
-                                    </button>
+                                            class="px-3 py-1 text-sm bg-gray-200 rounded-md hover:bg-gray-300">Add</button>
                                 </div>
                             </div>
                         </div>
-                        
+
+                        <!-- Russian Tags -->
+                        <div>
+                            <h4 class="font-medium mb-2">🇷🇺 Теги (Russian)</h4>
+                            <div class="space-y-2">
+                                <div class="flex flex-wrap gap-2 min-h-[32px]">
+                                    <span v-for="(tag, index) in selectedImage.tags_ru"
+                                          :key="'ru-'+index"
+                                          class="px-2 py-1 text-sm bg-red-50 border border-red-200 rounded-md text-red-800 flex items-center gap-1">
+                                        {{ tag }}
+                                        <button @click="removeTagRu(index)"
+                                                class="text-red-400 hover:text-red-600 leading-none">×</button>
+                                    </span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input
+                                        v-model="newTagRu"
+                                        @keyup.enter="addTagRu"
+                                        type="text"
+                                        class="flex-1 px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Добавить тег...">
+                                    <button @click="addTagRu"
+                                            class="px-3 py-1 text-sm bg-gray-200 rounded-md hover:bg-gray-300">Add</button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div>
                             <h4 class="font-medium mb-2">Text in Image</h4>
                             <textarea
                                 v-model="selectedImage.textContent"
                                 class="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 rows="3"
-                                placeholder="Enter text content..."
-                            ></textarea>
+                                placeholder="Enter text content...">
+                            </textarea>
                         </div>
-                        
+
                         <div class="flex gap-2">
                             <button @click="saveMetadata"
                                     :disabled="saving"
@@ -222,158 +285,135 @@
 
         createApp({
             setup() {
-                const images = ref([])
-                const searchQuery = ref('')
-                const selectedImage = ref(null)
-                const folderPath = ref('')
-                const processingAll = ref(false)
-                const currentImageName = ref('')
-                const processedCount = ref(0)
-                const totalToProcess = ref(0)
-                const failedImages = ref([])
-                const newTag = ref('')
-                const saving = ref(false)
-                const originalImageData = ref(null)
-                const folderOpened = ref(false)
-                const isLoading = ref(false)
-                const loadingStatus = ref('')
-                const saveAllMetadata = async () => {
-    try {
-        isLoading.value = true
-        loadingStatus.value = 'Saving everything...'
+                const images             = ref([])
+                const searchQuery        = ref('')
+                const selectedImage      = ref(null)
+                const folderPath         = ref('')
+                const processingAll      = ref(false)
+                const currentImageName   = ref('')
+                const processedCount     = ref(0)
+                const totalToProcess     = ref(0)
+                const failedImages       = ref([])
+                const newTag             = ref('')
+                const newTagRu           = ref('')
+                const saving             = ref(false)
+                const originalImageData  = ref(null)
+                const folderOpened       = ref(false)
+                const isLoading          = ref(false)
+                const loadingStatus      = ref('')
+                const tagCount           = ref(10)
+                const selectedLanguages  = ref(['en'])
 
-        // Собираем данные всех картинок в один объект
-        const metadataMap = {}
-        images.value.forEach(img => {
-            metadataMap[img.path] = {
-                description: img.description,
-                tags: img.tags,
-                text_content: img.textContent,
-                is_processed: img.is_processed
-            }
-        })
+                // ── Helpers ──────────────────────────────────────────────
+                const mapImage = (img) => ({
+                    name:        img.name,
+                    path:        img.path,
+                    url:         `/image/${encodeURIComponent(img.path)}`,
+                    description: img.description  || '',
+                    tags:        img.tags         || [],
+                    tags_ru:     img.tags_ru      || [],
+                    textContent: img.text_content || '',
+                    is_processed: Boolean(
+                        img.description ||
+                        (img.tags && img.tags.length) ||
+                        img.text_content
+                    )
+                })
 
-        const response = await fetch('/save-all-metadata', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ metadata: metadataMap })
-        })
-
-        if (!response.ok) throw new Error('Failed to save all metadata')
-
-        alert('All changes for all images saved successfully!')
-    } catch (err) {
-        console.error('Error saving all metadata:', err)
-        alert('Error: ' + err.message)
-    } finally {
-        isLoading.value = false
-        loadingStatus.value = ''
-    }
-}
-                const openFolder = async () => {
-                    if (!folderPath.value) {
-                        alert('Please enter a folder path')
-                        return
-                    }
-
-                    isLoading.value = true
-                    loadingStatus.value = 'Initializing...'
-                    
+                // ── Close folder ──────────────────────────────────────────
+                const closeFolder = async () => {
                     try {
-                        // First make a quick check if this is first-time initialization
-                        const initCheck = await fetch('/check-init-status')
-                        const initStatus = await initCheck.json()
-                        
-                        if (initStatus.needs_init) {
-                            loadingStatus.value = 'Downloading embedding model (this may take a few minutes)...'
-                        }
+                        await fetch('/close-folder', { method: 'POST' })
+                    } catch (err) {
+                        console.error('Error closing folder:', err)
+                    }
+                    folderOpened.value  = false
+                    images.value        = []
+                    selectedImage.value = null
+                    folderPath.value    = ''
+                    searchQuery.value   = ''
+                }
 
-                        // Use relative URL
+                // ── Open folder ──────────────────────────────────────────
+                const openFolder = async () => {
+                    if (!folderPath.value) { alert('Please enter a folder path'); return }
+                    isLoading.value     = true
+                    loadingStatus.value = 'Initializing...'
+                    try {
+                        const initCheck  = await fetch('/check-init-status')
+                        const initStatus = await initCheck.json()
+                        if (initStatus.needs_init)
+                            loadingStatus.value = 'Downloading embedding model (this may take a few minutes)...'
+
                         const response = await fetch('/images', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                folder_path: folderPath.value
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ folder_path: folderPath.value })
                         })
-
-                        if (!response.ok) {
-                            throw new Error('Failed to fetch images')
-                        }
+                        if (!response.ok) throw new Error('Failed to fetch images')
 
                         loadingStatus.value = 'Loading images...'
                         const data = await response.json()
-                        images.value = data.images.map(img => ({
-                            name: img.name,
-                            path: img.path,
-                            url: `/image/${encodeURIComponent(img.path)}`,
-                            description: img.description || '',
-                            tags: img.tags || [],
-                            textContent: img.text_content || '',
-                            is_processed: Boolean(
-                                img.description ||
-                                (img.tags && img.tags.length) ||
-                                img.text_content
-                            )
-                        }))
-
+                        images.value       = data.images.map(mapImage)
                         folderOpened.value = true
-                        console.log('Found images:', images.value.length)
                     } catch (err) {
                         console.error('Error accessing folder:', err)
                         alert('Error accessing folder: ' + err.message)
                     } finally {
-                        isLoading.value = false
+                        isLoading.value     = false
                         loadingStatus.value = ''
                     }
                 }
 
+                // ── Save All ─────────────────────────────────────────────
+                const saveAllMetadata = async () => {
+                    try {
+                        isLoading.value     = true
+                        loadingStatus.value = 'Saving everything...'
+                        const metadataMap   = {}
+                        images.value.forEach(img => {
+                            metadataMap[img.path] = {
+                                description:  img.description,
+                                tags:         img.tags,
+                                tags_ru:      img.tags_ru || [],
+                                text_content: img.textContent,
+                                is_processed: img.is_processed
+                            }
+                        })
+                        const response = await fetch('/save-all-metadata', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ metadata: metadataMap })
+                        })
+                        if (!response.ok) throw new Error('Failed to save all metadata')
+                        alert('All changes saved successfully!')
+                    } catch (err) {
+                        console.error('Error saving all metadata:', err)
+                        alert('Error: ' + err.message)
+                    } finally {
+                        isLoading.value     = false
+                        loadingStatus.value = ''
+                    }
+                }
+
+                // ── Modal ────────────────────────────────────────────────
                 const openImageModal = (image) => {
-                    selectedImage.value = JSON.parse(JSON.stringify(image))
+                    selectedImage.value     = JSON.parse(JSON.stringify(image))
                     originalImageData.value = JSON.parse(JSON.stringify(image))
                 }
 
+                // ── Search / Refresh ─────────────────────────────────────
                 const searchImages = async () => {
                     try {
                         const response = await fetch('/search', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                query: searchQuery.value
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: searchQuery.value })
                         })
-
-                        if (!response.ok) {
-                            throw new Error('Failed to search images')
-                        }
-
+                        if (!response.ok) throw new Error('Failed to search images')
                         const data = await response.json()
-                        if (data.images.length === 0) {
-                            // Handle no results gracefully
-                            alert('No images found matching your search criteria')
-                            return
-                        }
-
-                        images.value = data.images.map(img => ({
-                            name: img.name,
-                            path: img.path,
-                            // Use relative URL
-                            url: `/image/${encodeURIComponent(img.path)}`,
-                            description: img.description || '',
-                            tags: img.tags || [],
-                            textContent: img.text_content || '',
-                            is_processed: Boolean(
-                                img.description ||
-                                (img.tags && img.tags.length) ||
-                                img.text_content
-                            )
-                        }))
-
-                        console.log('Searched images:', images.value.length)
+                        if (!data.images.length) { alert('No images found matching your search criteria'); return }
+                        images.value = data.images.map(mapImage)
                     } catch (err) {
                         console.error('Error searching images:', err)
                         alert('Error searching images: ' + err.message)
@@ -382,96 +422,62 @@
 
                 const refreshImages = async () => {
                     try {
-                        // Use the images endpoint directly
                         const response = await fetch('/images', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                folder_path: folderPath.value
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ folder_path: folderPath.value })
                         })
-
-                        if (!response.ok) {
-                            throw new Error('Failed to refresh images')
-                        }
-
-                        const data = await response.json()
-                        images.value = data.images.map(img => ({
-                            name: img.name,
-                            path: img.path,
-                            // Use relative URL
-                            url: `/image/${encodeURIComponent(img.path)}`,
-                            description: img.description || '',
-                            tags: img.tags || [],
-                            textContent: img.text_content || '',
-                            is_processed: Boolean(
-                                img.description ||
-                                (img.tags && img.tags.length) ||
-                                img.text_content
-                            )
-                        }))
-
-                        console.log('Refreshed images:', images.value.length)
+                        if (!response.ok) throw new Error('Failed to refresh images')
+                        const data   = await response.json()
+                        images.value = data.images.map(mapImage)
                     } catch (err) {
                         console.error('Error refreshing images:', err)
                         alert('Error refreshing images: ' + err.message)
                     }
                 }
 
+                // ── Process single image ─────────────────────────────────
                 const processImage = async (image) => {
                     try {
-                        // Set processing state
                         image.processing = true
-
-                        const response = await fetch('/process-image', {
+                        const response   = await fetch('/process-image', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                image_path: image.path
+                                image_path: image.path,
+                                tag_count:  tagCount.value,
+                                languages:  selectedLanguages.value
                             })
                         })
-
-                        if (!response.ok) {
-                            throw new Error('Failed to process image')
-                        }
-
+                        if (!response.ok) throw new Error('Failed to process image')
                         const data = await response.json()
-                        
-                        // Update the image with new data
                         Object.assign(image, {
-                            description: data.description,
-                            tags: data.tags,
-                            textContent: data.text_content,
+                            description:  data.description,
+                            tags:         data.tags     || [],
+                            tags_ru:      data.tags_ru  || [],
+                            textContent:  data.text_content,
                             is_processed: data.is_processed
                         })
-                        
                     } catch (err) {
                         console.error('Error processing image:', err)
                         alert('Error processing image: ' + err.message)
                     } finally {
-                        // Clear processing state
                         image.processing = false
                     }
                 }
 
+                // ── Process All ──────────────────────────────────────────
                 const processAllImages = async () => {
-                    const unprocessedImages = images.value.filter(img => !img.is_processed)
-                    if (unprocessedImages.length === 0) {
-                        alert('No unprocessed images found!')
-                        return
-                    }
+                    const unprocessed = images.value.filter(img => !img.is_processed)
+                    if (!unprocessed.length) { alert('No unprocessed images found!'); return }
 
-                    processingAll.value = true
+                    processingAll.value    = true
                     currentImageName.value = ''
-                    processedCount.value = 0
-                    totalToProcess.value = unprocessedImages.length
-                    failedImages.value = []
+                    processedCount.value   = 0
+                    totalToProcess.value   = unprocessed.length
+                    failedImages.value     = []
 
-                    for (const image of unprocessedImages) {
+                    for (const image of unprocessed) {
                         try {
                             currentImageName.value = image.name
                             await processImage(image)
@@ -479,52 +485,45 @@
                         } catch (err) {
                             failedImages.value.push(image.name)
                             console.error(`Failed to process ${image.name}:`, err)
-                            // Continue with next image
                         }
                     }
 
                     processingAll.value = false
-                    if (failedImages.value.length > 0) {
-                        alert(`Processing complete with ${failedImages.value.length} failures`)
-                    } else {
-                        alert('All images processed successfully!')
-                    }
+                    alert(failedImages.value.length
+                        ? `Processing complete with ${failedImages.value.length} failures`
+                        : 'All images processed successfully!')
                 }
 
-                const progressPercentage = computed(() => {
-                    if (totalToProcess.value === 0) return 0
-                    return Math.round((processedCount.value / totalToProcess.value) * 100)
-                })
+                const progressPercentage = computed(() =>
+                    totalToProcess.value === 0 ? 0
+                        : Math.round((processedCount.value / totalToProcess.value) * 100)
+                )
 
+                // ── Save single image metadata ────────────────────────────
                 const saveMetadata = async () => {
                     if (!selectedImage.value) return
-                    
                     saving.value = true
                     try {
                         const response = await fetch('/save-all-metadata', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                path: selectedImage.value.path,
-                                description: selectedImage.value.description,
-                                tags: selectedImage.value.tags,
+                                path:         selectedImage.value.path,
+                                description:  selectedImage.value.description,
+                                tags:         selectedImage.value.tags,
+                                tags_ru:      selectedImage.value.tags_ru || [],
                                 text_content: selectedImage.value.textContent
                             })
                         })
+                        if (!response.ok) throw new Error('Failed to save metadata')
 
-                        if (!response.ok) {
-                            throw new Error('Failed to save metadata')
-                        }
-
-                        // Update the image in the main images array
                         const index = images.value.findIndex(img => img.path === selectedImage.value.path)
                         if (index !== -1) {
                             Object.assign(images.value[index], {
-                                description: selectedImage.value.description,
-                                tags: selectedImage.value.tags,
-                                textContent: selectedImage.value.textContent,
+                                description:  selectedImage.value.description,
+                                tags:         selectedImage.value.tags,
+                                tags_ru:      selectedImage.value.tags_ru || [],
+                                textContent:  selectedImage.value.textContent,
                                 is_processed: Boolean(
                                     selectedImage.value.description ||
                                     (selectedImage.value.tags && selectedImage.value.tags.length) ||
@@ -532,8 +531,6 @@
                                 )
                             })
                         }
-
-                        // Update original data
                         originalImageData.value = JSON.parse(JSON.stringify(selectedImage.value))
                         alert('Changes saved successfully!')
                     } catch (err) {
@@ -549,20 +546,24 @@
                     Object.assign(selectedImage.value, JSON.parse(JSON.stringify(originalImageData.value)))
                 }
 
+                // ── Tag management ───────────────────────────────────────
                 const addTag = () => {
                     if (!newTag.value.trim()) return
-                    if (!selectedImage.value.tags) {
-                        selectedImage.value.tags = []
-                    }
-                    if (!selectedImage.value.tags.includes(newTag.value.trim())) {
+                    if (!selectedImage.value.tags) selectedImage.value.tags = []
+                    if (!selectedImage.value.tags.includes(newTag.value.trim()))
                         selectedImage.value.tags.push(newTag.value.trim())
-                    }
                     newTag.value = ''
                 }
+                const removeTag = (index) => selectedImage.value.tags.splice(index, 1)
 
-                const removeTag = (index) => {
-                    selectedImage.value.tags.splice(index, 1)
+                const addTagRu = () => {
+                    if (!newTagRu.value.trim()) return
+                    if (!selectedImage.value.tags_ru) selectedImage.value.tags_ru = []
+                    if (!selectedImage.value.tags_ru.includes(newTagRu.value.trim()))
+                        selectedImage.value.tags_ru.push(newTagRu.value.trim())
+                    newTagRu.value = ''
                 }
+                const removeTagRu = (index) => selectedImage.value.tags_ru.splice(index, 1)
 
                 const isProcessed = computed(() => {
                     if (!selectedImage.value) return false
@@ -574,33 +575,17 @@
                 })
 
                 return {
-                    images,
-                    searchQuery,
-                    selectedImage,
-                    folderPath,
-                    openFolder,
-                    openImageModal,
-                    searchImages,
-                    refreshImages,
-                    processImage,
-                    processingAll,
-                    currentImageName,
-                    processedCount,
-                    totalToProcess,
-                    failedImages,
-                    progressPercentage,
-                    processAllImages,
-                    newTag,
-                    saving,
-                    saveMetadata,
-					saveAllMetadata,
-                    resetChanges,
-                    addTag,
-                    removeTag,
-                    isProcessed,
-                    folderOpened,
-                    isLoading,
-                    loadingStatus
+                    images, searchQuery, selectedImage, folderPath,
+                    openFolder, closeFolder, openImageModal,
+                    searchImages, refreshImages,
+                    processImage, processingAll, currentImageName,
+                    processedCount, totalToProcess, failedImages,
+                    progressPercentage, processAllImages,
+                    newTag, newTagRu, saving,
+                    saveMetadata, saveAllMetadata, resetChanges,
+                    addTag, removeTag, addTagRu, removeTagRu,
+                    isProcessed, folderOpened, isLoading, loadingStatus,
+                    tagCount, selectedLanguages
                 }
             }
         }).mount('#app')

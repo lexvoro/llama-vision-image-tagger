@@ -7,10 +7,9 @@ import json
 import logging
 import piexif
 from pathlib import Path
-from typing import List, Dict, Set, Optional, Any
+from typing import List, Dict, Optional, Any
 from PIL import Image
 
-# Импортируем процессор (убедитесь, что файл image_processor.py в той же папке)
 from image_processor import ImageProcessor, update_image_metadata
 
 app = FastAPI()
@@ -24,23 +23,25 @@ class FolderRequest(BaseModel):
 
 class ProcessImageRequest(BaseModel):
     image_path: str
+    tag_count: int = 10
+    languages: List[str] = ["en"]
 
-# --- ЗАПИСЬ В EXIF (WINDOWS XPKeywords) ---
-def write_metadata_to_file(file_path: Path, description: str, tags: List[str]):
+
+def write_metadata_to_file(file_path: Path, description: str, tags: List[str], tags_ru: List[str] = None):
     if file_path.suffix.lower() not in ['.jpg', '.jpeg']:
-        return 
+        return
     try:
         img = Image.open(file_path)
         exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
         if "exif" in img.info:
             try:
                 exif_dict = piexif.load(img.info["exif"])
-            except: pass
+            except:
+                pass
 
-        # Описание (UTF-8)
         exif_dict["0th"][piexif.ImageIFD.ImageDescription] = description.encode('utf-8')
-        # Теги для Windows (UTF-16LE)
-        exif_dict["0th"][0x9c9e] = ";".join(tags).encode('utf-16le')
+        all_tags = tags + (tags_ru or [])
+        exif_dict["0th"][0x9c9e] = ";".join(all_tags).encode('utf-16le')
 
         exif_bytes = piexif.dump(exif_dict)
         img.save(file_path, exif=exif_bytes, quality="keep")
@@ -48,88 +49,127 @@ def write_metadata_to_file(file_path: Path, description: str, tags: List[str]):
     except Exception as e:
         logger.error(f"❌ Failed to write EXIF: {e}")
 
-# --- СКАНЕР ПАПКИ ---
+
 def load_simple_metadata(folder_path: Path) -> Dict[str, Dict]:
     metadata_file = folder_path / "image_metadata.json"
     supported_ext = {'.jpg', '.jpeg', '.png', '.webp'}
-    
+
     if metadata_file.exists():
         with open(metadata_file, 'r', encoding='utf-8') as f:
             try:
                 metadata = json.load(f)
-            except: metadata = {}
+            except:
+                metadata = {}
     else:
         metadata = {}
 
     current_files = [str(p.name) for p in folder_path.glob("*") if p.suffix.lower() in supported_ext]
     for filename in current_files:
         if filename not in metadata:
-            metadata[filename] = {"description": "", "tags": [], "is_processed": False}
-    
+            metadata[filename] = {
+                "description": "",
+                "tags": [],
+                "tags_ru": [],
+                "is_processed": False
+            }
+
     return {k: v for k, v in metadata.items() if k in current_files}
 
-# --- ЭНДПОИНТЫ ---
 
 @app.get("/")
 async def read_root():
     return FileResponse("static/index.html")
+
 
 @app.post("/images")
 async def get_images(request: FolderRequest):
     folder_path = Path(request.folder_path)
     if not folder_path.exists():
         raise HTTPException(status_code=404, detail="Folder not found")
-    
+
     app.current_folder = str(folder_path)
     metadata = load_simple_metadata(folder_path)
-    
+
     images = []
     for path, data in metadata.items():
         images.append({
             "name": path, "path": path,
             "description": data.get("description", ""),
             "tags": data.get("tags", []),
+            "tags_ru": data.get("tags_ru", []),
             "is_processed": data.get("is_processed", False)
         })
     return {"images": images}
 
+
 @app.post("/process-image")
 async def process_image_endpoint(request: ProcessImageRequest):
     folder_path = Path(app.current_folder)
-    
-    # 1. Загружаем текущие данные из JSON
+
     metadata = load_simple_metadata(folder_path)
     current_data = metadata.get(request.image_path, {})
     old_tags = current_data.get("tags", [])
+    old_tags_ru = current_data.get("tags_ru", [])
     old_description = current_data.get("description", "").strip()
 
-    # 2. Запускаем нейросеть
     img_processor = ImageProcessor()
-    result = await img_processor.process_image(folder_path / request.image_path)
-    
-    if result["is_processed"]:
-        # 3. ОБЪЕДИНЕНИЕ ТЕГОВ
-        ai_tags = result.get("tags", [])
-        result["tags"] = list(set(old_tags + ai_tags))
 
-        # 4. УМНОЕ ОБНОВЛЕНИЕ ОПИСАНИЯ
-        # Если вы уже ввели описание вручную, мы его НЕ затираем.
-        # Если описания не было — берем то, что придумала нейросеть.
+    try:
+        result = await img_processor.process_image(
+            folder_path / request.image_path,
+            tag_count=request.tag_count,
+            languages=request.languages
+        )
+    except TypeError:
+        # Fallback if image_processor doesn't support new params yet
+        result = await img_processor.process_image(folder_path / request.image_path)
+        if result.get("tags"):
+            result["tags"] = result["tags"][:request.tag_count]
+        result.setdefault("tags_ru", [])
+
+    if result["is_processed"]:
+        ai_tags = result.get("tags", [])
+        ai_tags_ru = result.get("tags_ru", [])
+        result["tags"] = list(set(old_tags + ai_tags))
+        result["tags_ru"] = list(set(old_tags_ru + ai_tags_ru))
+
         if old_description:
             result["description"] = old_description
             logger.info(f"Keeping manual description for {request.image_path}")
-        
-        # 5. Сохраняем всё вместе
+
         update_image_metadata(folder_path, request.image_path, result)
-        write_metadata_to_file(folder_path / request.image_path, result["description"], result["tags"])
-        
+        write_metadata_to_file(
+            folder_path / request.image_path,
+            result["description"],
+            result["tags"],
+            result.get("tags_ru", [])
+        )
+
     return result
+
+
+@app.post("/close-folder")
+async def close_folder():
+    """Close current folder and delete temporary image_metadata.json."""
+    try:
+        if hasattr(app, 'current_folder') and app.current_folder:
+            folder_path = Path(app.current_folder)
+            metadata_file = folder_path / "image_metadata.json"
+            if metadata_file.exists():
+                os.remove(metadata_file)
+                logger.info(f"🔥 Deleted temporary file: {metadata_file.name}")
+
+        app.current_folder = None
+        return {"status": "success", "message": "Folder closed and metadata cleaned up"}
+    except Exception as e:
+        logger.error(f"Error closing folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/save-all-metadata")
 @app.post("/update-metadata")
 async def save_all_metadata(request: Any):
     try:
-        # 1. Получаем данные из запроса (поддержка разных форматов)
         if isinstance(request, dict):
             data_to_save = request.get("metadata", request)
         else:
@@ -146,26 +186,23 @@ async def save_all_metadata(request: Any):
         folder_path = Path(app.current_folder)
         metadata_file = folder_path / "image_metadata.json"
 
-        # 2. Массовая запись в EXIF каждого файла
         logger.info("Starting EXIF update for all images...")
         for rel_path, img_data in data_to_save.items():
             if isinstance(img_data, dict) and img_data.get("is_processed"):
                 full_path = folder_path / rel_path
-                # Записываем данные прямо в файл
                 write_metadata_to_file(
-                    full_path, 
-                    img_data.get("description", ""), 
-                    img_data.get("tags", [])
+                    full_path,
+                    img_data.get("description", ""),
+                    img_data.get("tags", []),
+                    img_data.get("tags_ru", [])
                 )
-        
-        # 3. АВТО-УДАЛЕНИЕ JSON
-        # Теперь, когда данные в файлах, временный JSON больше не нужен
+
         if metadata_file.exists():
             try:
                 os.remove(metadata_file)
-                logger.info(f"🔥 Временный файл {metadata_file.name} удален. Данные в EXIF.")
+                logger.info(f"🔥 Temporary file {metadata_file.name} deleted. Data saved to EXIF.")
             except Exception as e:
-                logger.warning(f"Не удалось удалить JSON (возможно, открыт): {e}")
+                logger.warning(f"Could not delete JSON: {e}")
 
         return {"status": "success", "message": "All metadata saved to files and JSON cleaned up"}
 
@@ -173,13 +210,16 @@ async def save_all_metadata(request: Any):
         logger.error(f"Save All error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/image/{path:path}")
 async def get_image(path: str):
     return FileResponse(os.path.join(app.current_folder, path))
 
+
 @app.get("/check-init-status")
 async def check_init():
     return {"needs_init": False}
+
 
 if __name__ == "__main__":
     import uvicorn
