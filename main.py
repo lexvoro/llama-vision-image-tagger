@@ -150,65 +150,78 @@ async def process_image_endpoint(request: ProcessImageRequest):
 
 @app.post("/close-folder")
 async def close_folder():
-    """Close current folder and delete temporary image_metadata.json."""
     try:
         if hasattr(app, 'current_folder') and app.current_folder:
             folder_path = Path(app.current_folder)
             metadata_file = folder_path / "image_metadata.json"
+            
             if metadata_file.exists():
                 os.remove(metadata_file)
-                logger.info(f"🔥 Deleted temporary file: {metadata_file.name}")
+                logger.info(f"🔥 Final cleanup: deleted {metadata_file.name}")
 
         app.current_folder = None
-        return {"status": "success", "message": "Folder closed and metadata cleaned up"}
+        return {"status": "success", "message": "Folder closed and metadata deleted"}
     except Exception as e:
         logger.error(f"Error closing folder: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+from fastapi import Request # Добавьте в импорты наверху
+
 @app.post("/save-all-metadata")
 @app.post("/update-metadata")
-async def save_all_metadata(request: Any):
+async def save_all_metadata(request: Request):
     try:
-        if isinstance(request, dict):
-            data_to_save = request.get("metadata", request)
-        else:
-            try:
-                body = await request.json()
-                data_to_save = body.get("metadata", body)
-            except:
-                data_to_save = request
+        # Получаем "сырые" данные, чтобы Pydantic не ругался раньше времени
+        try:
+            body = await request.json()
+        except Exception as e:
+            logger.error(f"Raw JSON error: {e}")
+            return {"status": "error", "message": "Invalid JSON format"}
 
+        # Извлекаем словарь метаданных
+        data_to_save = body.get("metadata", body)
+        
         if not isinstance(data_to_save, dict):
-            logger.error(f"Invalid data type: {type(data_to_save)}")
-            return {"status": "error", "message": "Invalid data format"}
+            # Если пришел список или строка, пытаемся работать с этим
+            logger.warning(f"Data is not a dict, it is {type(data_to_save)}")
+            return {"status": "error", "message": "Data must be a dictionary"}
+
+        if not hasattr(app, 'current_folder') or not app.current_folder:
+            logger.error("No folder selected in app.current_folder")
+            return {"status": "error", "message": "No active folder"}
 
         folder_path = Path(app.current_folder)
-        metadata_file = folder_path / "image_metadata.json"
 
-        logger.info("Starting EXIF update for all images...")
+        # Сохраняем EXIF
+        counter = 0
         for rel_path, img_data in data_to_save.items():
-            if isinstance(img_data, dict) and img_data.get("is_processed"):
+            if isinstance(img_data, dict):
                 full_path = folder_path / rel_path
-                write_metadata_to_file(
-                    full_path,
-                    img_data.get("description", ""),
-                    img_data.get("tags", []),
-                    img_data.get("tags_ru", [])
-                )
+                if full_path.exists():
+                    # Чистим теги от возможных битых символов \xad и т.д.
+                    clean_description = str(img_data.get("description", "")).replace('\xad', '')
+                    clean_tags = [str(t).replace('\xad', '') for t in img_data.get("tags", [])]
+                    clean_tags_ru = [str(t).replace('\xad', '') for t in img_data.get("tags_ru", [])]
 
-        if metadata_file.exists():
-            try:
-                os.remove(metadata_file)
-                logger.info(f"🔥 Temporary file {metadata_file.name} deleted. Data saved to EXIF.")
-            except Exception as e:
-                logger.warning(f"Could not delete JSON: {e}")
+                    write_metadata_to_file(
+                        full_path,
+                        clean_description,
+                        clean_tags,
+                        clean_tags_ru
+                    )
+                    counter += 1
 
-        return {"status": "success", "message": "All metadata saved to files and JSON cleaned up"}
+        return {
+            "status": "success", 
+            "message": f"Saved {counter} images to EXIF",
+            "folder": app.current_folder
+        }
 
     except Exception as e:
-        logger.error(f"Save All error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"🔥 Critical Save Error: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/image/{path:path}")
