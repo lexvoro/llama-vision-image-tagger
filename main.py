@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class FolderRequest(BaseModel):
     folder_path: str
+    recursive: bool = False
 
 class ProcessImageRequest(BaseModel):
     image_path: str
@@ -52,50 +53,77 @@ def write_metadata_to_file(file_path: Path, description: str, tags: List[str], t
         logger.error(f"❌ Failed to write EXIF: {e}")
 
 
-def load_simple_metadata(folder_path: Path) -> Dict[str, Dict]:
+
+def load_simple_metadata(folder_path: Path, recursive: bool = False) -> Dict[str, Dict]:
     metadata_file = folder_path / "image_metadata.json"
     supported_ext = {'.jpg', '.jpeg', '.png', '.webp'}
 
+    # 1. Загружаем JSON
+    metadata = {}
     if metadata_file.exists():
-        with open(metadata_file, 'r', encoding='utf-8') as f:
-            try:
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
-            except:
-                metadata = {}
-    else:
-        metadata = {}
+        except Exception as e:
+            logger.error(f"Error loading JSON: {e}")
 
-    current_files = [str(p.name) for p in folder_path.glob("*") if p.suffix.lower() in supported_ext]
+    # 2. Поиск файлов (Универсальный способ)
+    current_files = []
+    
+    # Если recursive=True, используем rglob('*'), если False — glob('*')
+    files_iterator = folder_path.rglob('*') if recursive else folder_path.glob('*')
+    
+    for p in files_iterator:
+        # Проверяем, что это файл и у него нужное расширение
+        if p.is_file() and p.suffix.lower() in supported_ext:
+            try:
+                # Получаем путь относительно корня выбранной папки
+                rel_path = str(p.relative_to(folder_path)).replace("\\", "/")
+                current_files.append(rel_path)
+            except Exception as e:
+                continue
+
+    logger.info(f"🔎 Найдено файлов: {len(current_files)} (Рекурсия: {recursive})")
+
+    # 3. Синхронизируем с метаданными
+    new_metadata = {}
     for filename in current_files:
-        if filename not in metadata:
-            metadata[filename] = {
+        if filename in metadata:
+            new_metadata[filename] = metadata[filename]
+        else:
+            new_metadata[filename] = {
                 "description": "",
                 "tags": [],
                 "tags_ru": [],
                 "is_processed": False
             }
 
-    return {k: v for k, v in metadata.items() if k in current_files}
-
-
-@app.get("/")
-async def read_root():
-    return FileResponse("static/index.html")
-
+    return new_metadata
 
 @app.post("/images")
 async def get_images(request: FolderRequest):
+    # 1. Печатаем в консоль, что пришло с фронтенда
+    print(f"\n--- НОВЫЙ ЗАПРОС ---")
+    print(f"Путь из браузера: {request.folder_path}")
+    print(f"Галочка рекурсии: {request.recursive}")
+
     folder_path = Path(request.folder_path)
+    
     if not folder_path.exists():
-        raise HTTPException(status_code=404, detail="Folder not found")
+        print(f"❌ ОШИБКА: Папка не найдена по пути {folder_path.absolute()}")
+        raise HTTPException(status_code=404, detail=f"Folder not found: {request.folder_path}")
 
     app.current_folder = str(folder_path)
-    metadata = load_simple_metadata(folder_path)
+    
+    # 2. Вызываем поиск
+    metadata = load_simple_metadata(folder_path, recursive=request.recursive)
+    print(f"✅ Итого найдено картинок: {len(metadata)}")
 
     images = []
     for path, data in metadata.items():
         images.append({
-            "name": path, "path": path,
+            "name": path.split('/')[-1], 
+            "path": path,
             "description": data.get("description", ""),
             "tags": data.get("tags", []),
             "tags_ru": data.get("tags_ru", []),
@@ -233,7 +261,9 @@ async def save_all_metadata(request: Request):
     except Exception as e:
         logger.error(f"🔥 Critical Save Error: {str(e)}")
         return {"status": "error", "message": str(e)}
-
+@app.get("/")
+async def read_root():
+    return FileResponse("static/index.html")
 @app.get("/thumbnail/{path:path}")
 async def get_thumbnail(path: str):
     # Берем текущую папку из состояния приложения

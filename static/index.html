@@ -11,34 +11,46 @@
     <div id="app" class="min-h-screen">
 
         <!-- ───────── FOLDER SELECT SCREEN ───────── -->
-        <div v-if="!folderOpened" class="h-screen flex items-center justify-center">
-            <div class="text-center">
-                <h1 class="text-3xl font-semibold text-gray-800 mb-6">Image Tagger</h1>
-                <div class="flex flex-col gap-4">
-                    <div class="flex gap-2 items-center">
-                        <input
-                            v-model="folderPath"
-                            type="text"
-                            placeholder="Enter folder path..."
+    <div v-if="!folderOpened" class="h-screen flex items-center justify-center">
+        <div class="text-center">
+            <h1 class="text-3xl font-semibold text-gray-800 mb-6">Image Tagger</h1>
+            <div class="flex flex-col gap-4">
+                <div class="flex gap-2 items-center">
+                    <input
+                        v-model="folderPath"
+                        type="text"
+                        placeholder="Enter folder path..."
+                        :disabled="isLoading"
+                        class="px-4 py-2 border border-gray-300 rounded-md w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    >
+                    <button @click="openFolder"
                             :disabled="isLoading"
-                            class="px-4 py-2 border border-gray-300 rounded-md w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        >
-                        <button @click="openFolder"
-                                :disabled="isLoading"
-                                class="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center gap-2">
-                            <span v-if="isLoading" class="inline-block animate-spin">↻</span>
-                            {{ isLoading ? 'Opening...' : 'Open Folder' }}
-                        </button>
-                    </div>
-                    <div v-if="loadingStatus" class="text-sm text-gray-600">
-                        <div class="flex items-center justify-center gap-2">
-                            <div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                            {{ loadingStatus }}
-                        </div>
+                            class="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center gap-2">
+                        <span v-if="isLoading" class="inline-block animate-spin">↻</span>
+                        {{ isLoading ? 'Opening...' : 'Open Folder' }}
+                    </button>
+                </div>
+                
+                <!-- Добавляем галочку под инпутом -->
+                <div class="flex justify-start px-1">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" 
+                            v-model="recursiveScan" 
+                            :disabled="isLoading"
+                            class="w-4 h-4 accent-blue-600 rounded cursor-pointer">
+                        <span class="text-sm font-medium text-gray-600">Include subfolders (рекурсивно)</span>
+                    </label>
+                </div>
+
+                <div v-if="loadingStatus" class="text-sm text-gray-600">
+                    <div class="flex items-center justify-center gap-2">
+                        <div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        {{ loadingStatus }}
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
         <!-- ───────── MAIN CONTENT SCREEN ───────── -->
         <div v-else class="container mx-auto px-4 py-6">
@@ -309,6 +321,7 @@
                 const tagCount           = ref(10)
                 const selectedLanguages  = ref(['en'])
                 const autoSave           = ref(false)
+                const recursiveScan      = ref(false)
 
                 // ── Helpers ──────────────────────────────────────────────
                 const mapImage = (img) => ({
@@ -349,14 +362,21 @@
                         const initCheck  = await fetch('/check-init-status')
                         const initStatus = await initCheck.json()
                         if (initStatus.needs_init)
-                            loadingStatus.value = 'Downloading embedding model (this may take a few minutes)...'
+                            loadingStatus.value = 'Downloading embedding model...'
 
                         const response = await fetch('/images', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ folder_path: folderPath.value })
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            folder_path: folderPath.value,
+                            recursive: recursiveScan.value  // <--- ПРОВЕРЬ ЭТУ СТРОКУ
                         })
-                        if (!response.ok) throw new Error('Failed to fetch images')
+                    })
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to fetch images');
+                        }
 
                         loadingStatus.value = 'Loading images...'
                         const data = await response.json()
@@ -605,7 +625,7 @@
                     saveMetadata, saveAllMetadata, resetChanges,
                     addTag, removeTag, addTagRu, removeTagRu,
                     isProcessed, folderOpened, isLoading, loadingStatus,
-                    tagCount, selectedLanguages, autoSave
+                    tagCount, selectedLanguages,recursiveScan, autoSave
                 }
             }
         }).mount('#app')
