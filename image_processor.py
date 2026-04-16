@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import json
 from pydantic import BaseModel
 from PIL import Image
+Image.MAX_IMAGE_PIXELS = 150000000
 import os
 import asyncio
 
@@ -139,29 +140,41 @@ class ImageProcessor:
         return ImageText.model_validate_json(response)
 
     async def _query_ollama(self, prompt: str, image_path: str, format_schema: dict) -> str:
-        """Запрос к Ollama с повторами при сбоях."""
-        max_retries = 3
+        max_retries = 10
+        # Устанавливаем лимит ожидания в секундах
+        TIMEOUT_SECONDS = 40 
+
         for attempt in range(max_retries):
             try:
-                response = await self.client.chat(
-                    model=self.model_name,
-                    messages=[
-                        {'role': 'system', 'content': 'You are a helpful assistant that outputs only JSON.'},
-                        {'role': 'user', 'content': prompt, 'images': [image_path]}
-                    ],
-                    options={
-                        'temperature': 0.3,
-                        'num_gpu': -1,
-                        'repeat_penalty': 1.2,
-                        'num_predict': 1024  # Запас по длине ответа
-                    },
-                    format=format_schema
+                # Оборачиваем запрос в wait_for
+                response = await asyncio.wait_for(
+                    self.client.chat(
+                        model=self.model_name,
+                        messages=[
+                            {'role': 'system', 'content': 'You are a helpful assistant that outputs only JSON.'},
+                            {'role': 'user', 'content': prompt, 'images': [image_path]}
+                        ],
+                        options={
+                            'temperature': 0.3,
+                            'num_gpu': -1,
+                            'num_predict': 1024, # Ограничиваем длину ответа (меньше слов = быстрее)
+                        },
+                        format=format_schema
+                    ),
+                    timeout=TIMEOUT_SECONDS
                 )
                 return response['message']['content']
+            
+            except asyncio.TimeoutError:
+                logger.warning(f"⏰ Тайм-аут запроса (попытка {attempt + 1})")
+                if attempt == max_retries - 1:
+                    raise Exception("Нейросеть отвечала слишком долго и была прервана.")
+            
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise e
                 await asyncio.sleep(1)
+
 
 def update_image_metadata(folder_path: Path, image_path: str, metadata: Dict) -> None:
     """Запись текущего прогресса в JSON-файл."""
