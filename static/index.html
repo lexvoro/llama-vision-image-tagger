@@ -121,10 +121,15 @@
                                 class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex items-center gap-1">
                             <span>💾</span> Save All
                         </button>
+                        <!-- Кнопка-чекбокс Auto-save -->
+                        <label :class="class="max-w-4xl mx-auto">
+                            <input type="checkbox" v-model="autoSave" class="hidden">
+                            <span>{{ autoSave ? '✅ Auto-save: ON' : '💾 Auto-save: OFF' }}</span>
+                        </label>
                     </div>
                 </div>
             </div>
-
+              
             <!-- Progress bar -->
             <div v-if="processingAll" class="max-w-2xl mx-auto my-4">
                 <div class="flex justify-between text-sm text-gray-600">
@@ -303,6 +308,7 @@
                 const loadingStatus      = ref('')
                 const tagCount           = ref(10)
                 const selectedLanguages  = ref(['en'])
+                const autoSave           = ref(false)
 
                 // ── Helpers ──────────────────────────────────────────────
                 const mapImage = (img) => ({
@@ -437,27 +443,40 @@
                 }
 
                 // ── Process single image ─────────────────────────────────
-                const processImage = async (image) => {
+               const processImage = async (image) => {
                     try {
                         image.processing = true
-                        const response   = await fetch('/process-image', {
+                        const response = await fetch('/process-image', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 image_path: image.path,
-                                tag_count:  tagCount.value,
-                                languages:  selectedLanguages.value
+                                tag_count: tagCount.value,
+                                languages: selectedLanguages.value
                             })
                         })
                         if (!response.ok) throw new Error('Failed to process image')
                         const data = await response.json()
                         Object.assign(image, {
-                            description:  data.description,
-                            tags:         data.tags     || [],
-                            tags_ru:      data.tags_ru  || [],
-                            textContent:  data.text_content,
+                            description: data.description,
+                            tags: data.tags || [],
+                            tags_ru: data.tags_ru || [],
+                            textContent: data.text_content,
                             is_processed: data.is_processed
                         })
+
+                        // --- ДОБАВЬ ЭТОТ БЛОК ---
+                        if (autoSave.value && data.is_processed) {
+                            await fetch('/save-all-metadata', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    metadata: { [image.path]: data }
+                                })
+                            })
+                        }
+                // ------------------------
+
                     } catch (err) {
                         console.error('Error processing image:', err)
                         alert('Error processing image: ' + err.message)
@@ -465,6 +484,7 @@
                         image.processing = false
                     }
                 }
+
 
                 // ── Process All ──────────────────────────────────────────
                 const processAllImages = async () => {
@@ -585,7 +605,7 @@
                     saveMetadata, saveAllMetadata, resetChanges,
                     addTag, removeTag, addTagRu, removeTagRu,
                     isProcessed, folderOpened, isLoading, loadingStatus,
-                    tagCount, selectedLanguages
+                    tagCount, selectedLanguages, autoSave
                 }
             }
         }).mount('#app')
