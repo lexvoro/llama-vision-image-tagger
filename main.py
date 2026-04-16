@@ -108,6 +108,8 @@ async def process_image_endpoint(request: ProcessImageRequest):
 
     metadata = load_simple_metadata(folder_path)
     current_data = metadata.get(request.image_path, {})
+    
+    # Сохраняем старые данные для объединения
     old_tags = current_data.get("tags", [])
     old_tags_ru = current_data.get("tags_ru", [])
     old_description = current_data.get("description", "").strip()
@@ -115,29 +117,36 @@ async def process_image_endpoint(request: ProcessImageRequest):
     img_processor = ImageProcessor()
 
     try:
+        # Запускаем обработку (теперь с поддержкой перевода)
         result = await img_processor.process_image(
             folder_path / request.image_path,
             tag_count=request.tag_count,
             languages=request.languages
         )
-    except TypeError:
-        # Fallback if image_processor doesn't support new params yet
-        result = await img_processor.process_image(folder_path / request.image_path)
-        if result.get("tags"):
-            result["tags"] = result["tags"][:request.tag_count]
-        result.setdefault("tags_ru", [])
+    except Exception as e:
+        logger.error(f"Processing error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     if result["is_processed"]:
+        # 1. Объединяем теги (старые + новые уникальные)
         ai_tags = result.get("tags", [])
         ai_tags_ru = result.get("tags_ru", [])
         result["tags"] = list(set(old_tags + ai_tags))
         result["tags_ru"] = list(set(old_tags_ru + ai_tags_ru))
 
+        # 2. ЛОГИКА ОПИСАНИЯ: 
+        # Если старого описания нет, используем описание от ИИ.
+        # Если старое есть, оставляем его (чтобы не затереть ручные правки).
         if old_description:
             result["description"] = old_description
             logger.info(f"Keeping manual description for {request.image_path}")
+        else:
+            logger.info(f"Using AI description for {request.image_path}")
 
+        # 3. ЗАПИСЬ В JSON (image_metadata.json)
         update_image_metadata(folder_path, request.image_path, result)
+        
+        # 4. ЗАПИСЬ В EXIF (В сам файл изображения)
         write_metadata_to_file(
             folder_path / request.image_path,
             result["description"],
